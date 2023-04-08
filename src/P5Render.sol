@@ -2,28 +2,19 @@
 
 pragma solidity ^0.8.13;
 
-import "./interfaces/IBlitmap.sol";
-import "./MetadataBuilder.sol";
-import "./MetadataJSONKeys.sol";
-import "./utils/StringsBytes32.sol";
 import {OwnableUpgradeable} from "openzeppelin-upgradeable/access/OwnableUpgradeable.sol";
 import {UUPSUpgradeable} from "openzeppelin-upgradeable/proxy/utils/UUPSUpgradeable.sol";
-import {IBlitkinRenderV4} from "./interfaces/IBlitkinRenderV4.sol";
+import {IScriptyBuilder, WrappedScriptRequest} from "scripty/IScriptyBuilder.sol";
+import {Base64} from "solady/utils/Base64.sol";
+import {StringsUpgradeable as Strings} from "openzeppelin-upgradeable/utils/StringsUpgradeable.sol";
+
 // import "forge-std/console.sol";
 
-contract BlitkinRenderV4 is OwnableUpgradeable, UUPSUpgradeable, IBlitkinRenderV4 {
+contract P5Render is OwnableUpgradeable, UUPSUpgradeable {
 
-    event InscriptionsAdded();
-
-    mapping (uint256 => Inscription) inscriptions;
-    
-    uint256 inscriptionsCount;
-    /// @notice Stores address => string base, string postfix, string contractURI for urls
-    ContractInfo private contractInfo;
-
-    mapping(bytes32 => bool) private tokenPairs;
-
-    IBlitmap public blitmap;
+    address public constant ethfsFileStorageAddress = 0xFc7453dA7bF4d0c739C1c53da57b3636dAb0e11e;
+    address public constant scriptyStorageAddress = 0x096451F43800f207FC32B4FF86F286EdaF736eE3;
+    address public constant scriptyBuilderAddress  = 0x16b727a2Fc9322C724F4Bc562910c99a5edA5084;
 
     constructor() {
         _disableInitializers();
@@ -33,259 +24,55 @@ contract BlitkinRenderV4 is OwnableUpgradeable, UUPSUpgradeable, IBlitkinRenderV
         __Ownable_init();
         __UUPSUpgradeable_init();
     }
-    
-    // Setters
-    function setBaseURIs(ContractInfo memory info)
-        external
-        onlyOwner
-    {
-        contractInfo = info;
-        blitmap = IBlitmap(info.blitmapAddress);
-    }
 
-    function getContractInfo() external view returns(string memory){
-        //   from opensea: https://docs.opensea.io/docs/contract-level-metadata
-        //         {
-        //   "name": "OpenSea Creatures",
-        //   "description": "OpenSea Creatures are adorable aquatic beings primarily for demonstrating what can be done using the OpenSea platform. Adopt one today to try out all the OpenSea buying, selling, and bidding feature set.",
-        //   "image": "external-link-url/image.png",
-        //   "external_link": "external-link-url",
-        //   "seller_fee_basis_points": 100, # Indicates a 1% seller fee.
-        //   "fee_recipient": "0xA97F337c39cccE66adfeCB2BF99C1DdC54C2D721" # Where seller fees will be paid to.
-        // }
-        MetadataBuilder.JSONItem[] memory items = new MetadataBuilder.JSONItem[](5);
-        items[0].key = "name";
-        items[0].value = contractInfo.title;
-        items[0].quote = true;
+    function tokenURI(uint256 tokenId, uint96 random, bytes memory script) public view returns (string memory) {
+        WrappedScriptRequest[] memory requests = new WrappedScriptRequest[](5);
+        requests[0].name = "scriptyBase";
+        requests[0].wrapType = 0; // <script>[script]</script>
+        requests[0].contractAddress = scriptyStorageAddress;
 
-        items[1].key = "description";
-        items[1].value = contractInfo.description;
-        items[1].quote = true;
+        requests[1].name = "p5-v1.5.0.min.js.gz";
+        requests[1].wrapType = 2; // <script type="text/javascript+gzip" src="data:text/javascript;base64,[script]"></script>
+        requests[1].contractAddress = ethfsFileStorageAddress;
 
-        items[2].key = "external_link";
-        items[2].value = contractInfo.contractURI;
-        items[2].quote = true;
+        requests[2].name = "gunzipScripts-0.0.1.js";
+        requests[2].wrapType = 1; // <script src="data:text/javascript;base64,[script]"></script>
+        requests[2].contractAddress = ethfsFileStorageAddress;
 
-        items[3].key = "seller_fee_basis_points";
-        items[3].value = Strings.toString(contractInfo.royaltyFee);
-        items[3].quote = false;
+        requests[3].wrapType = 0; // <script>[script]</script>
+        requests[3].scriptContent = abi.encodePacked("var randomNr = ", Strings.toString(random), "; var tokenId = ", Strings.toString(tokenId), ";");
 
-        items[4].key = "fee_recipient";
-        items[4].value = Strings.toHexString(uint256(uint160(contractInfo.royaltyReciever)), 20);
-        items[4].quote = true;
+        //requests[3].name = "pointsAndLines";
+        requests[4].wrapType = 0; // <script>[script]</script>
+        requests[4].scriptContent = script;
 
-        return MetadataBuilder.generateEncodedJSON(items);
-    } 
+        // For easier testing, bufferSize is injected in the constructor
+        // of this contract.
 
-    function addInscriptions(
-        Inscription[] calldata newInscriptions
-    ) external onlyOwner {
-        unchecked {
-            // get count
-            //uint256 count = inscriptionsCount;
-            for (uint256 i = 0; i < newInscriptions.length; ++i) {
-                inscriptions[i] = newInscriptions[i];
-            }
-            // update count
-            inscriptionsCount = newInscriptions.length;
-        }
-        emit InscriptionsAdded();
-    }
+        //requests[4].scriptContent = controllerScript;
 
-    function updateInscription(
-        uint256 inscriptionId,
-        Inscription calldata newInscription
-    ) external onlyOwner {
-        inscriptions[inscriptionId] = newInscription;
-        emit InscriptionsAdded();
-    }
-    
-    function getInscription(uint256 inscriptionId) public view returns (Inscription memory){
-        return inscriptions[inscriptionId];
-    }
+        // For lazy devs that dont want to mess around with buffersize off-chain
+        // calculate it here
+        IScriptyBuilder scriptyBuilder = IScriptyBuilder(scriptyBuilderAddress);
 
-    function getInscriptionsCount() public view returns (uint256){
-        return inscriptionsCount;
-    }
+        uint256 bufferSize = scriptyBuilder.getBufferSizeForHTMLWrapped(requests);
 
-    function getScramble(uint256 inscriptionId, uint256 blitmapPaletteId) public view returns (string memory,string memory, string memory) {
-        return getScramble(inscriptionId, blitmapPaletteId, [0,0,0,0]);
-    }
+        bytes memory base64EncodedHTMLDataURI = IScriptyBuilder(scriptyBuilderAddress)
+            .getEncodedHTMLWrapped(requests, bufferSize);
 
-    function getScramble(uint256 inscriptionId, uint256 blitmapPaletteId, uint8[4] memory _colors) public view returns (string memory,string memory, string memory) {
-        Inscription memory inscription = getInscription(inscriptionId);
-        bytes memory data = blitmap.tokenDataOf(blitmapPaletteId);
-        string memory palette = blitmap.tokenNameOf(blitmapPaletteId);
-        
-        string[4] memory colors = [
-            string(abi.encodePacked("%23", byteToHexString(data[0]), byteToHexString(data[1]), byteToHexString(data[2]))),
-            string(abi.encodePacked("%23", byteToHexString(data[3]), byteToHexString(data[4]), byteToHexString(data[5]))),
-            string(abi.encodePacked("%23", byteToHexString(data[6]), byteToHexString(data[7]), byteToHexString(data[8]))),
-            string(abi.encodePacked("%23", byteToHexString(data[9]), byteToHexString(data[10]), byteToHexString(data[11])))       
-        ];
-        string[4] memory temp;
-        for(uint256 i; i < temp.length; ++i){
-            if(_colors[i] == 0 || _colors[i] > 4) break;
-            temp[i] = colors[_colors[i]-1];
-            if(i == 3) colors = temp;
-        }
-
-        string memory animationURI = string.concat(
-            contractInfo.animationBase,
-            StringsBytes32.toHexString(inscription.btc_txn),
-            contractInfo.animationPostfix,
-            "?fill1=",
-            colors[0],
-            "&fill2=",
-            colors[1],
-            "&fill3=",
-            colors[2],
-            "&fill4=",
-            colors[3]
+        bytes memory metadata = abi.encodePacked(
+            '{"name":"p5.js Example - GZIP - Base64", "description":"Assembles GZIP compressed base64 encoded p5.js stored in ethfs FileStore contract with a demo scene. Metadata and animation URL are both base64 encoded.","animation_url":"',
+            base64EncodedHTMLDataURI,
+            '"}'
         );
 
-        string memory btcHash = StringsBytes32.toHexString(inscription.btc_txn);
-
-        string memory imageURI = string.concat(
-            contractInfo.imageBase,
-            btcHash,
-            contractInfo.imagePostfix,
-            "%3Ffill1%3D",
-            colors[0],
-            "%26fill2%3D",
-            colors[1],
-            "%26fill3%3D",
-            colors[2],
-            "%26fill4%3D",
-            colors[3]
-        );
-
-        return(string.concat(inscription.composition, " ", palette), animationURI, imageURI);
-    }
-
-    function tokenURI(uint256 tokenId, uint256 inscriptionId, uint256 blitmapPaletteId) public view returns (string memory) {
-        return tokenURI(tokenId, inscriptionId, blitmapPaletteId, [0, 0, 0, 0], false);
-    }
-    
-    function tokenURI(uint256 tokenId, uint256 inscriptionId, uint256 blitmapPaletteId, uint8[4] memory _colors, bool _switched) public view returns (string memory) {
-        Inscription memory inscription = getInscription(inscriptionId);
-        string memory palette = blitmap.tokenNameOf(blitmapPaletteId);
-        string memory btcHash = StringsBytes32.toHexString(inscription.btc_txn);
-
-        (, string memory animationURI, string memory imageURI ) = getScramble(inscriptionId,  blitmapPaletteId, _colors);
-
-        string memory htmlWrapper = string.concat(
-           
-            '<!DOCTYPE html><html><style> html,body { margin: 0; padding: 0; height: 100%; } #svg-container { position: absolute; width: 100%; height: 100%; overflow: hidden; } svg, object { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 100%; max-height: 100%;}</style>',
-            '<body><div id="svg-container"><object type="image/svg+xml" width="100%" height="100%" data="',
-            animationURI,
-            '"></object></div></body></html>'
-        );
-
-        MetadataBuilder.JSONItem[]
-        memory items = new MetadataBuilder.JSONItem[](6);
-        items[0].key = MetadataJSONKeys.keyName;
-        items[0].value = string.concat(
-            "#",
-            Strings.toString(tokenId),
-            " ",
-            inscription.composition,
-            " ",
-            palette
-        );
-
-        items[0].quote = true;
-
-        items[1].key = MetadataJSONKeys.keyDescription;
-        items[1].value = string.concat(contractInfo.description, " \\n ", animationURI);
-        items[1].quote = true;
-
-        items[2].key = MetadataJSONKeys.keyImage;
-        items[2].value = imageURI;
-        items[2].quote = true;
-
-        items[3].key = MetadataJSONKeys.keyAnimationURL;
-        items[3].value = string.concat(
-            'data:text/html;base64,',
-            string(Base64.encode(bytes(htmlWrapper)))
-        );
-        items[3].quote = true;
-
-        items[4].key = "external_url";
-        items[4].value = animationURI;
-        items[4].quote = true;
-
-        MetadataBuilder.JSONItem[]
-            memory properties = new MetadataBuilder.JSONItem[](6);
-        properties[0].key = "BTC tx Hash";
-        properties[0].value = btcHash;
-        properties[0].quote = true;
-
-        properties[1].key = "Composition";
-        properties[1].value = inscription.composition;
-        properties[1].quote = true;
-
-        properties[2].key = "Palette";
-        properties[2].value = palette;
-        properties[2].quote = true;
-
-        properties[3].key = "Artist";
-        properties[3].value = inscription.artist;
-        properties[3].quote = true;
-
-        properties[4].key = "Switched";
-        properties[4].value = _switched ? "Yes": "No";
-        properties[4].quote = true;
-
-        properties[5].key = "Rescrambled";
-        properties[5].value = _colors[0] == 0 ? "No": "Yes";
-        properties[5].quote = true;
-
-        items[5].key = MetadataJSONKeys.keyProperties;
-        items[5].quote = false;
-        items[5].value = MetadataBuilder.generateJSON(properties);
-
-        return MetadataBuilder.generateEncodedJSON(items);
-    }
-
-    function uintToHexString(uint a) internal pure returns (string memory) {
-        uint count = 0;
-        uint b = a;
-        while (b != 0) {
-            count++;
-            b /= 16;
-        }
-        bytes memory res = new bytes(count);
-        for (uint i=0; i<count; ++i) {
-            b = a % 16;
-            res[count - i - 1] = uintToHexDigit(uint8(b));
-            a /= 16;
-        }
-        
-        string memory str = string(res);
-        if (bytes(str).length == 0) {
-            return "00";
-        } else if (bytes(str).length == 1) {
-            return string(abi.encodePacked("0", str));
-        }
-        return str;
-    }
-    
-    function byteToUint(bytes1 b) internal pure returns (uint) {
-        return uint(uint8(b));
-    }
-    
-    function byteToHexString(bytes1 b) internal pure returns (string memory) {
-        return uintToHexString(byteToUint(b));
-    }
-
-    function uintToHexDigit(uint8 d) internal pure returns (bytes1) {
-        if (0 <= d && d <= 9) {
-            return bytes1(uint8(bytes1('0')) + d);
-        } else if (10 <= uint8(d) && uint8(d) <= 15) {
-            return bytes1(uint8(bytes1('a')) + d - 10);
-        }
-        revert();
+        return
+            string(
+                abi.encodePacked(
+                    "data:application/json;base64,",
+                    Base64.encode(metadata)
+                )
+            );
     }
 
     function _authorizeUpgrade(address newImplementation)

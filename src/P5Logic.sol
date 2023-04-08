@@ -7,10 +7,10 @@ import {OwnableUpgradeable} from "openzeppelin-upgradeable/access/OwnableUpgrade
 import {MerkleProofUpgradeable} from "openzeppelin-upgradeable/utils/cryptography/MerkleProofUpgradeable.sol";
 import {DefaultOperatorFiltererUpgradeable} from "operator-filter-registry/upgradeable/DefaultOperatorFiltererUpgradeable.sol";
 import {Initializable} from "openzeppelin-upgradeable/proxy/utils/Initializable.sol";
+import { SSTORE2 } from "solmate/utils/SSTORE2.sol";
+import { P5Render} from "./P5Render.sol";
 
 contract P5Logic is Initializable, ERC721, OwnableUpgradeable, DefaultOperatorFiltererUpgradeable{
-
-    event CombinationMinted(uint8 indexed composition, uint8 indexed palette);
 
     bytes32 public ALRoot;
     uint256 public mintStatus; 
@@ -18,18 +18,15 @@ contract P5Logic is Initializable, ERC721, OwnableUpgradeable, DefaultOperatorFi
     uint256 public maxSupply;
     uint256 public maxPerWallet;
     uint256 public pricePerNFT;
+    address public script;
+    P5Render public render;
 
     error PublicMintNotStarted();
     error PayMintPrice();
     error ALMintNotStarted();
     error NotOnAL();
     error MaxSupplyMinted();
-    error NoContracts();
-    error DoNotMintOriginals();
-    error OnlyCombineOriginals();
-    error ScrambleAlreadyMinted();
     error AlreadyMintedAllowance();
-    error MaxLimitPerComposition();
     error SplitterNotSet();
 
     //Constructor / Initializer
@@ -38,10 +35,16 @@ contract P5Logic is Initializable, ERC721, OwnableUpgradeable, DefaultOperatorFi
         _disableInitializers();
     }
 
-    function initialize(string memory name, string memory symbol) initializer public { 
-        __ERC721_init(name, symbol, 1);
+    function initialize(string memory _name, address _render, string memory _symbol, uint256 _maxSupply, uint256 _maxPerWallet, uint256 _pricePerNFT, bytes memory _script) initializer public { 
+        __ERC721_init(_name, _symbol, 1);
         __Ownable_init();
         __DefaultOperatorFilterer_init();
+        mintReciever = msg.sender;
+        maxSupply = _maxSupply;
+        maxPerWallet = _maxPerWallet;
+        pricePerNFT = _pricePerNFT;
+        script = SSTORE2.write(_script);
+        render = P5Render(_render);
     }
 
     /// Admin setters
@@ -97,7 +100,7 @@ contract P5Logic is Initializable, ERC721, OwnableUpgradeable, DefaultOperatorFi
     //TokenURI
     function tokenURI(uint256 tokenId) override public view returns (string memory) {
         if(tokenId == 0 || tokenId > tokenIndex) revert();
-        return "sd";//render.tokenURI(tokenId, _ownerOf[tokenId].compositionId, _ownerOf[tokenId].paletteId);
+        return render.tokenURI(tokenId, _ownerOf[tokenId].random, SSTORE2.read(script));
     }
 
     //
