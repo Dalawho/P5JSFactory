@@ -33,8 +33,7 @@ abstract contract ERC721 is Initializable {
 
     struct OwnerStruct {
         address owner;
-        uint8 compositionId;
-        uint8 paletteId;
+        uint96 random; 
     }
 
     struct BalanceStruct {
@@ -198,7 +197,7 @@ abstract contract ERC721 is Initializable {
             _balanceOf[to].minted++;
         }
 
-        _ownerOf[id].owner = to;
+        _ownerOf[id] = OwnerStruct(to, uint96(uint256(keccak256(abi.encodePacked(id, to, block.difficulty)))));
 
         tokenIndex = id + 1;
 
@@ -220,34 +219,6 @@ abstract contract ERC721 is Initializable {
         delete getApproved[id];
 
         emit Transfer(owner, address(0), id);
-    }
-
-    function _mintAndSet(address to, uint8 compositionId, uint8 paletteId)
-        internal
-        virtual
-    {
-        // cannot mint to 0x0
-        require(to != address(0), "INVALID_RECIPIENT");
-
-        // process the token id data
-        uint256 id = tokenIndex;
-
-        require(_ownerOf[id].owner == address(0), "ALREADY_MINTED");
-
-        //this is not great because of all the storage write, I guess to avoid this need to change the way layers
-        _ownerOf[id] = OwnerStruct(to, compositionId, paletteId);
-
-        // process the balance changes and do a loop to phantom-mint the tokens to to_
-        unchecked {
-            _balanceOf[to].balance++;
-            _balanceOf[to].minted++;
-        }
-
-        // set the new token index
-        tokenIndex = id + 1;
-
-        emit Transfer(address(0), to, id);
-
     }
 
     /*//////////////////////////////////////////////////////////////

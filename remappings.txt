@@ -5,3 +5,4 @@ solady/=lib/solady/src/
 solmate/=lib/solady/lib/solmate/src/
 openzeppelin-upgradeable/=lib/openzeppelin-contracts-upgradeable/contracts/
 openzeppelin/=lib/openzeppelin-contracts/contracts/
+operator-filter-registry/=lib/operator-filter-registry/src/
