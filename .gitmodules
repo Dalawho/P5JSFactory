@@ -17,3 +17,7 @@
 [submodule "lib/scripty.sol"]
 	path = lib/scripty.sol
 	url = https://github.com/intartnft/scripty.sol
+[submodule "lib/operator-filter-registry"]
+	path = lib/operator-filter-registry
+	url = https://github.com/ProjectOpenSea/operator-filter-registry
+	branch = v1.4.1
