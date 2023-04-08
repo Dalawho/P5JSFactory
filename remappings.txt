@@ -1,0 +1,7 @@
+ds-test/=lib/forge-std/lib/ds-test/src/
+forge-std/=lib/forge-std/src/
+scripty.sol/=lib/scripty.sol/contracts/
+solady/=lib/solady/src/
+solmate/=lib/solady/lib/solmate/src/
+openzeppelin-upgradeable/=lib/openzeppelin-contracts-upgradeable/contracts/
+openzeppelin/=lib/openzeppelin-contracts/contracts/

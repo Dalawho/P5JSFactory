@@ -13,9 +13,3 @@ contract BlitkinRenderProxy is ERC1967Proxy {
         ERC1967Proxy(_implementation, _data)
     {}
 }
-
-contract UUPSProxy is ERC1967Proxy {
-    constructor(address _implementation, bytes memory _data)
-        ERC1967Proxy(_implementation, _data)
-    {}
-}
